@@ -22,22 +22,25 @@ function startNextServer() {
       });
     } else {
       // Production: standalone server
+      // ÖNEMLİ: Son kullanıcıda node KURULU DEĞİL → spawn("node") çalışmaz (siyah ekran).
+      // Electron'un gömülü node'unu kullan: process.execPath + ELECTRON_RUN_AS_NODE=1
       console.log("[Electron] Production mode: starting standalone server...");
-      const serverPath = path.join(
+      const standaloneDir = path.join(
         process.resourcesPath,
         "app",
         ".next",
-        "standalone",
-        "server.js"
+        "standalone"
       );
-      serverProcess = spawn("node", [serverPath], {
-        cwd: path.join(process.resourcesPath, "app"),
+      const serverPath = path.join(standaloneDir, "server.js");
+      serverProcess = spawn(process.execPath, [serverPath], {
+        cwd: standaloneDir, // public + .next/static buraya göre çözülür
         stdio: "pipe",
         env: {
           ...process.env,
           NODE_ENV: "production",
           PORT: "3000",
           HOSTNAME: "127.0.0.1",
+          ELECTRON_RUN_AS_NODE: "1", // Electron'u saf node gibi çalıştır
         },
       });
     }
