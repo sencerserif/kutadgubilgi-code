@@ -9,7 +9,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "build": "next build && node scripts/copy-assets.mjs",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
     "db:push": "prisma db push",
@@ -17,11 +17,12 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "electron:dev": "concurrently \"bun run dev\" \"wait-on http://127.0.0.1:3000 && cross-env NODE_ENV=development electron electron/main.js\"",
-    "electron:build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && electron-builder",
-    "dist:win": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && electron-builder --win --x64",
-    "dist:linux": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && electron-builder --linux AppImage",
-    "dist:mac": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && electron-builder --mac",
-    "dist:all": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && electron-builder -mwl"
+    "electron:build": "next build && node scripts/copy-assets.mjs && electron-builder",
+    "dist:win": "next build && node scripts/copy-assets.mjs && electron-builder --win --x64",
+    "dist:linux": "next build && node scripts/copy-assets.mjs && electron-builder --linux AppImage",
+    "dist:mac": "next build && node scripts/copy-assets.mjs && electron-builder --mac",
+    "dist:all": "next build && node scripts/copy-assets.mjs && electron-builder -mwl",
+    "copy-assets": "node scripts/copy-assets.mjs"
   },
   "build": {
     "appId": "com.kutadgubilgi.code",

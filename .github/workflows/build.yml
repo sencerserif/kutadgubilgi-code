@@ -6,6 +6,12 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write   # Release oluşturabilmek için
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"   # imzalama atla (sertifika yok)
+
 jobs:
   build-windows:
     runs-on: windows-latest
