@@ -256,46 +256,103 @@ async function callGoogle(
   apiKey: string,
   temperature?: number,
   maxTokens?: number
-): Promise<{ content: string; tokensIn: number; tokensOut: number }> {
+): Promise<{ content: string; tokensIn: number; tokensOut: number; reasoning?: string }> {
   // System + history -> contents
   const systemMsg = messages.find((m) => m.role === "system");
   const chatMessages = messages.filter((m) => m.role !== "system");
 
-  const contents = chatMessages.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+  // Thinking modelleri için özel config
+  const isThinkingModel = model.includes("thinking") || model.includes("2.5");
+  const generationConfig: Record<string, unknown> = {
+    temperature: temperature ?? 0.7,
+    maxOutputTokens: maxTokens ?? 8192,
+  };
+  if (isThinkingModel) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
 
-  const res = await fetch(
-    `${baseUrl}/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: systemMsg
-          ? { parts: [{ text: systemMsg.content }] }
-          : undefined,
-        generationConfig: {
-          temperature: temperature ?? 0.7,
-          maxOutputTokens: maxTokens ?? 4096,
-        },
-      }),
-    }
-  );
+  let res: Response;
+  try {
+    res = await fetch(
+      `${baseUrl}/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: chatMessages.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+          })),
+          systemInstruction: systemMsg
+            ? { parts: [{ text: systemMsg.content }] }
+            : undefined,
+          generationConfig,
+        }),
+      }
+    );
+  } catch (err) {
+    throw new Error(
+      `Google API bağlantı hatası: ${err instanceof Error ? err.message : "bilinmiyor"}. İnternet veya API key kontrol edin.`
+    );
+  }
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Google API hatası (${res.status}): ${errText}`);
+    let errorMsg = `Google API hatası (${res.status})`;
+    try {
+      const errData = JSON.parse(errText);
+      if (errData.error?.message) {
+        errorMsg += `: ${errData.error.message}`;
+      } else {
+        errorMsg += `: ${errText.slice(0, 300)}`;
+      }
+    } catch {
+      errorMsg += `: ${errText.slice(0, 300)}`;
+    }
+    throw new Error(errorMsg);
   }
 
   const data = await res.json();
-  const content =
-    data.candidates?.[0]?.content?.parts
-      ?.map((p: { text?: string }) => p.text)
-      .join("") ?? "";
+
+  // Hata kontrolü
+  if (data.error) {
+    throw new Error(`Google API: ${data.error.message ?? "hata"}`);
+  }
+
+  // Prompt feedback (safety engellemesi)
+  if (data.promptFeedback?.blockReason) {
+    throw new Error(`Google API: İstek engellendi - ${data.promptFeedback.blockReason}`);
+  }
+
+  // Candidates kontrolü
+  if (!data.candidates || data.candidates.length === 0) {
+    throw new Error("Google API: Boş yanıt (candidates yok)");
+  }
+
+  const candidate = data.candidates[0];
+
+  // Finish reason kontrolü
+  if (candidate.finishReason === "SAFETY") {
+    throw new Error("Google API: İçerik güvenlik filtresine takıldı");
+  }
+  if (candidate.finishReason === "MAX_TOKENS") {
+    // Kısmi yanıt varsa onu döndür
+  }
+
+  const parts = candidate.content?.parts ?? [];
+  let content = "";
+  let reasoning = "";
+  for (const p of parts) {
+    if (p.thought && p.text) {
+      reasoning += p.text;
+    } else if (p.text) {
+      content += p.text;
+    }
+  }
+
   return {
     content,
+    reasoning: reasoning || undefined,
     tokensIn: data.usageMetadata?.promptTokenCount ?? 0,
     tokensOut: data.usageMetadata?.candidatesTokenCount ?? 0,
   };

@@ -279,25 +279,55 @@ async function streamGoogle(
   const systemMsg = messages.find((m) => m.role === "system");
   const chatMessages = messages.filter((m) => m.role !== "system");
 
-  const res = await fetch(
-    `${baseUrl}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: chatMessages.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        })),
-        systemInstruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,
-        generationConfig: { temperature: temperature ?? 0.7, maxOutputTokens: maxTokens ?? 4096 },
-      }),
-    }
-  );
+  // Thinking modelleri için özel config
+  const isThinkingModel = model.includes("thinking") || model.includes("2.5");
+  const generationConfig: Record<string, unknown> = {
+    temperature: temperature ?? 0.7,
+    maxOutputTokens: maxTokens ?? 8192,
+  };
+
+  // Thinking modelleri için thinkingConfig
+  if (isThinkingModel) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `${baseUrl}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: chatMessages.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+          })),
+          systemInstruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,
+          generationConfig,
+        }),
+      }
+    );
+  } catch (err) {
+    throw new Error(
+      `Google API bağlantı hatası: ${err instanceof Error ? err.message : "bilinmiyor"}. İnternet bağlantınızı veya API key'i kontrol edin.`
+    );
+  }
 
   if (!res.ok || !res.body) {
     const errText = await res.text();
-    throw new Error(`Google API hatası ${res.status}: ${errText.slice(0, 200)}`);
+    let errorMsg = `Google API hatası ${res.status}`;
+    try {
+      const errData = JSON.parse(errText);
+      if (errData.error?.message) {
+        errorMsg += `: ${errData.error.message}`;
+      } else {
+        errorMsg += `: ${errText.slice(0, 300)}`;
+      }
+    } catch {
+      errorMsg += `: ${errText.slice(0, 300)}`;
+    }
+    throw new Error(errorMsg);
   }
 
   const reader = res.body.getReader();
@@ -316,11 +346,22 @@ async function streamGoogle(
       const trimmed = line.trim();
       if (!trimmed.startsWith("data:")) continue;
       const data = trimmed.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
       try {
         const parsed = JSON.parse(data);
-        const text =
-          parsed.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("") ?? "";
-        if (text) send({ type: "delta", content: text });
+        // Hata kontrolü
+        if (parsed.error) {
+          send({ type: "error", error: parsed.error.message ?? "Google API hatası" });
+          continue;
+        }
+        const parts = parsed.candidates?.[0]?.content?.parts ?? [];
+        for (const p of parts) {
+          if (p.text) send({ type: "delta", content: p.text });
+          // Thinking modelleri için thought flag
+          if (p.thought && p.text) {
+            send({ type: "reasoning", content: p.text });
+          }
+        }
         if (parsed.usageMetadata) {
           send({
             type: "usage",
@@ -329,7 +370,7 @@ async function streamGoogle(
           });
         }
       } catch {
-        // skip
+        // JSON parse hatası - skip
       }
     }
   }

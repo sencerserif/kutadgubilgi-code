@@ -1,6 +1,6 @@
 {
   "name": "kutadgubilgi-code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Kutadgubilgi Code - 12 AI sağlayıcılı, akıllı kod asistanı",
   "author": "Kutadgubilgi",
@@ -42,19 +42,25 @@
       {
         "from": ".next/standalone",
         "to": "app/.next/standalone",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "public",
         "to": "app/public",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.png",
@@ -69,19 +75,24 @@
       "shortcutName": "Kutadgubilgi Code"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "build/icon.png",
       "category": "Development",
       "maintainer": "Kutadgubilgi",
       "artifactName": "Kutadgubilgi-Code-${version}.${ext}"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "build/icon.png",
       "category": "public.app-category.developer-tools",
       "artifactName": "Kutadgubilgi-Code-${version}.${ext}"
     },
-    "publish": null
+    "publish": null,
+    "npmRebuild": false
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
